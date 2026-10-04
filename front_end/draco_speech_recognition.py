@@ -36,6 +36,10 @@ class Draco():
                 print("\nListening completely offline without PyAudio! Press Ctrl+C to stop.\n")
                 
                 while True:
+                    if not check_for_audio_buffer_availability():
+                        time.sleep(0.1)
+                        continue
+
                     data = self.audio_queue.get()
                     if not self.recognizer.AcceptWaveform(data):
                         # print(self.recognizer.PartialResult())
@@ -51,7 +55,7 @@ class Draco():
                         print("WOKEN UP".center(40, "-"))
                         continue
 
-                    if self.wakeup and check_for_audio_buffer_availability():
+                    if self.wakeup:
                         response = get_response(command)
                         phonemes = text_to_phonemes(response).decode("utf-8")
                         speech = IPA_to_speech(phonemes, "bf_alice(1)+bf_emma(2)")
