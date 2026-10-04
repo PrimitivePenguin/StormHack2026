@@ -162,6 +162,7 @@ class Draco:
 
                     if not self.wakeup and "hey siri" in command:
                         self.wakeup = True
+                        self.counter.count()
                         print("WOKEN UP".center(40, "-"))
 
                     if self.wakeup:
