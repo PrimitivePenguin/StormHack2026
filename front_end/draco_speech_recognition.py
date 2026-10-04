@@ -7,13 +7,17 @@ from IPA_related.to_phonemes import text_to_phonemes
 import sys
 import time
 import json
+<<<<<<< HEAD
 import queue
+=======
+>>>>>>> 2e0e88f73298c81e97c79f9a123a86a8cda351db
 import threading
 import requests
 import sounddevice as sd
 
 from vosk import Model, KaldiRecognizer
 from dotenv import load_dotenv
+<<<<<<< HEAD
 from gemini.run_model import get_response
 from brainrot.run_model import brainrotify
 
@@ -22,10 +26,16 @@ load_dotenv()
 AUDIO_STATUS_URL = "http://127.0.0.1:5000/audio-buffer-status"
 RESET = object()  # marker pushed into the audio queue when muting starts
 
+=======
+
+load_dotenv()
+
+>>>>>>> 2e0e88f73298c81e97c79f9a123a86a8cda351db
 
 class Draco:
     def __init__(
         self,
+<<<<<<< HEAD
         model_name = "vosk-model-en-us-0.22-lgraph", #-lgraph
         model_path = None,  # folder containing the model
         lang="en-us",
@@ -38,20 +48,37 @@ class Draco:
         status_poll_interval=0.05,
         unmute_delay=0.4,
         max_backlog_blocks=40,  # ~10 s of audio at blocksize=4000
+=======
+        model_path=None,
+        lang="en-us",
+        samplerate=16000,
+        blocksize=8000,
+        channels=1,
+        callback=None,
+        listening_timeout=60 * 10,
+>>>>>>> 2e0e88f73298c81e97c79f9a123a86a8cda351db
     ):
         self.samplerate = samplerate
         self.blocksize = blocksize
         self.channels = channels
         self.callback = callback
 
+<<<<<<< HEAD
         print("Loading offline Vosk model (the large one takes a while)...")
 
         self.model = Model(model_name=model_name)
+=======
+        print("Loading offline Vosk model...")
+
+        self.model = Model(model_path=model_path, lang=lang)
+>>>>>>> 2e0e88f73298c81e97c79f9a123a86a8cda351db
         self.recognizer = KaldiRecognizer(self.model, self.samplerate)
 
         self.counter = Counter(listening_timeout)
+
         self.wakeup = False
 
+<<<<<<< HEAD
         self.command = None
         self.command_lock = threading.Lock()
 
@@ -131,6 +158,15 @@ class Draco:
         threading.Thread(target=self._recognizer_loop, daemon=True).start()
 
         try:
+=======
+        # The callback writes recognized commands here.
+        # No audio queue is needed.
+        self.command = None
+        self.command_lock = threading.Lock()
+
+    def mainloop(self):
+        try:
+>>>>>>> 2e0e88f73298c81e97c79f9a123a86a8cda351db
             with sd.RawInputStream(
                 samplerate=self.samplerate,
                 blocksize=self.blocksize,
@@ -148,6 +184,7 @@ class Draco:
                         self.wakeup = False
                         print("Sleeping now".center(40, "-"))
 
+<<<<<<< HEAD
                     if self.is_muted():
                         self.get_command()
                         time.sleep(0.05)
@@ -178,6 +215,13 @@ class Draco:
                         time.sleep(0.05)
                         continue
 
+=======
+                    if not check_for_audio_buffer_availability():
+                        time.sleep(0.1)
+                        continue
+
+                    # Only wait for a command, not audio.
+>>>>>>> 2e0e88f73298c81e97c79f9a123a86a8cda351db
                     command = self.get_command()
 
                     if command is None:
@@ -187,21 +231,38 @@ class Draco:
                     if command == "":
                         continue
 
+<<<<<<< HEAD
+=======
+                    # Wake word
+>>>>>>> 2e0e88f73298c81e97c79f9a123a86a8cda351db
                     if not self.wakeup and "hey siri" in command:
                         self.wakeup = True
                         print("WOKEN UP".center(40, "-"))
 
+<<<<<<< HEAD
                         phonemes = json.loads(
                             text_to_phonemes("Hi how can I help you?").decode("utf-8")
                         )["phonemes"]
 
                         speech = IPA_to_speech(phonemes, "bf_alice(1)+bf_emma(2)")
+=======
+                        phonemes = json.loads(text_to_phonemes("Hi how can I help you?").decode("utf-8"))["phonemes"]
+
+                        speech = IPA_to_speech(
+                            phonemes,
+                            "bf_alice(1)+bf_emma(2)"
+                        )
+                        # Send generated speech to the game.
+>>>>>>> 2e0e88f73298c81e97c79f9a123a86a8cda351db
                         upload_audio(speech)
                         continue
 
                     if self.wakeup:
                         self.process_command(command)
+<<<<<<< HEAD
                         self.counter.reset()
+=======
+>>>>>>> 2e0e88f73298c81e97c79f9a123a86a8cda351db
 
         except KeyboardInterrupt:
             print("\nStopping...")
@@ -209,6 +270,7 @@ class Draco:
         except Exception as e:
             print(f"\nAn error occurred: {e}")
 
+<<<<<<< HEAD
         finally:
             self._stop.set()
 
@@ -216,10 +278,19 @@ class Draco:
         """
         Runs on sounddevice's audio thread, so it must return fast:
         no Vosk, no HTTP, no locks held for long. It only enqueues.
+=======
+    def audio_callback(self, indata, frames, time_info, status):
+        """
+        Called directly by sounddevice for every audio block.
+
+        Audio is sent directly to Vosk instead of being placed
+        into a queue.
+>>>>>>> 2e0e88f73298c81e97c79f9a123a86a8cda351db
         """
         if status:
             print(status, file=sys.stderr)
 
+<<<<<<< HEAD
         if self.is_muted():
             if not self._was_muted:
                 self._was_muted = True
@@ -241,10 +312,32 @@ class Draco:
             pass
 
     def set_command(self, command):
+=======
+        data = bytes(indata)
+
+        try:
+            if self.recognizer.AcceptWaveform(data):
+                result = json.loads(self.recognizer.Result())
+                command = result.get("text", "").strip()
+
+                if command:
+                    self.set_command(command)
+
+        except Exception as e:
+            print(f"Vosk error: {e}", file=sys.stderr)
+
+    def set_command(self, command):
+        """
+        Store the newest recognized command.
+
+        There is only one command slot, so commands don't pile up.
+        """
+>>>>>>> 2e0e88f73298c81e97c79f9a123a86a8cda351db
         with self.command_lock:
             self.command = command
 
     def get_command(self):
+<<<<<<< HEAD
         with self.command_lock:
             command = self.command
             self.command = None
@@ -255,11 +348,28 @@ class Draco:
         answer = get_response(command)
         # gemini answer -> brainrot
         response = brainrotify(answer)
+=======
+        """
+        Retrieve the newest recognized command.
+        """
+        with self.command_lock:
+            command = self.command
+            self.command = None
+
+        return command
+
+    def process_command(self, command):
+        """
+        Process a completed voice command.
+        """
+        response = get_response(command)
+>>>>>>> 2e0e88f73298c81e97c79f9a123a86a8cda351db
 
         phonemes = json.loads(
             text_to_phonemes(response).decode("utf-8")
         )["phonemes"]
 
+<<<<<<< HEAD
         speech = IPA_to_speech(phonemes, "bf_alice(1)+bf_emma(2)")
         upload_audio(speech)
 
@@ -270,4 +380,29 @@ class Draco:
 
 if __name__ == "__main__":
     draco = Draco(model_path="vosk-model-en-us-0.22")
+=======
+        speech = IPA_to_speech(
+            phonemes,
+            "bf_alice(1)+bf_emma(2)"
+        )
+
+        # Send generated speech to the game.
+        upload_audio(speech)
+
+        print("Command:", command, "\n")
+        print("Response:", response, "\n")
+
+
+def check_for_audio_buffer_availability(
+    url="http://127.0.0.1:5000/audio-buffer-status"
+):
+    response = requests.get(url=url)
+    response.raise_for_status()
+
+    return response.json()["status"]
+
+
+if __name__ == "__main__":
+    draco = Draco()
+>>>>>>> 2e0e88f73298c81e97c79f9a123a86a8cda351db
     draco.mainloop()
