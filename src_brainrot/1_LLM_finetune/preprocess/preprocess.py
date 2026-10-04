@@ -7,7 +7,7 @@ DATA_DIR = Path("data")
 SEED = 0                    # same seed = same split for everyone
  
 N_TEST_INPUTS = 35          # small on purpose: humans rate these by hand
-N_VAL_INPUTS = 100          # enough to watch validation loss
+N_VAL_INPUTS = 150          # enough to watch validation loss
 MAX_PER_INPUT = 3           # at most 3 brainrot versions of the same English sentence
 CAP_SHARE = 0.05            # at most 5% of rows may contain each overused pattern
 CAP_PATTERNS = ["🙏", r"\bking\b", r"\bqueen\b"]   # \b = whole word ("thinking" is safe)
