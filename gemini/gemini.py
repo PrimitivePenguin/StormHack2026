@@ -1,12 +1,9 @@
 import google.genai as genai
 
-client = genai.Client()
-chat = client.chats.create(model="gemini-2.5-flash")
+def get_response(input_text, model = "gemini-3.5-flash-lite"):
+    client = genai.Client()
+    chat = client.chats.create(model=model)
 
-# First message
-response = chat.send_message("Hi, I live in Seattle.")
-print(response.text)
-
-# Second message (Gemini remembers the context)
-response = chat.send_message("What should I wear outside today?")
-print(response.text)
+    response = chat.send_message(input_text)
+    
+    return response.text
