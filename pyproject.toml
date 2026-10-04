@@ -1,0 +1,14 @@
+[project]
+name = "brainrot"
+version = "0.1.0"
+requires-python = ">=3.10,<3.13"
+dependencies = ["pandas"]
+
+[project.optional-dependencies]
+data = ["datasets"]
+tts  = ["kokoro", "misaki[en]", "soundfile"]
+eval = ["statsmodels"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
