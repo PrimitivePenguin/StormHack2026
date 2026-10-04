@@ -25,23 +25,36 @@ pip install sounddevice vosk python-dotenv
 pip freeze | Out-File -Encoding utf8 requirements.txt
 ```
 
-
+Running venv:
+```
+cd path\to\StormHack2026
+.\.venv\Scripts\Activate.ps1
+```
 
 Terminal 1:
 ```
 docker run --rm -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
 ```
 
-Terminal 2: Draco assistant
+Terminal 2: Malfoy GUI - open GUI the frontend
 ```
-cd path\to\StormHack2026
-.\.venv\Scripts\Activate.ps1
+python malfoy_GUI/gui.py
+```
+
+Terminal 3: Server.py - Receive audio
+```
+python malfoy_GUI/server.py
+```
+
+Terminal 4: Draco speech recognitionassistant
+```
 python front_end\draco_speech_recognition.py
 ```
 
-Terminal 3: audio upload optional (need fix)
+Terminal 5: Ollama
 
-Terminal 4: Malfoy GUI (needs fix)
+Closing: Terminal 4 -> 3 -> 2 -> 1
+
 
 
 Finish: Ctrl + c in all
