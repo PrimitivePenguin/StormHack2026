@@ -169,6 +169,7 @@ class Draco:
 
 
                     if self.wakeup:
+                        print("DEBUG: Wakeup")
                         self.process_command(command)
                         self.counter.reset()
 
