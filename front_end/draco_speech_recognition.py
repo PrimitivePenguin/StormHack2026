@@ -8,6 +8,8 @@ import queue
 import time
 import sounddevice as sd
 from vosk import Model, KaldiRecognizer
+from dotenv import load_dotenv
+load_dotenv()  # loads GEMINI_API_KEY from .env
 
 class Draco():
     def __init__(self, model_path = None, lang = "en-us", samplerate = 16000, blocksize = 8000, channels = 1, callback=None, listening_timeout = 60 * 10):
