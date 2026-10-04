@@ -1,12 +1,13 @@
 import pygame
+import requests
 import os
 from collections import deque
 
 pygame.init()
 pygame.mixer.init()
 
-FRAME_FOLDER = "./malfoy-GUI/resources/frames"
-AUDIO_FOLDER = "./malfoy-GUI/resources/audio"
+FRAME_FOLDER = "./malfoy_GUI/resources/frames"
+AUDIO_FOLDER = "./malfoy_GUI/audio"
 AUDIO_EXTENSIONS = (".mp3", ".ogg", ".wav")
 FADE_DURATION_MS = 500      # how long the transition back to frame 0 takes
 ANIMATION_EARLY_MS = 700    # animation stops this long before the audio ends
@@ -40,6 +41,19 @@ current_duration_ms = 0   # length of the current track in milliseconds
 
 pygame.time.set_timer(CHECK_FOLDER_EVENT, 1000)
 
+def update_audio_buffer_available_flag(url = "http://127.0.0.1:5000/audio-finished-playing"):
+    try:
+        response = requests.post(
+            url = url,
+            json={
+                "message": "Audio finished reading"
+            },
+            timeout=2
+        )
+        response.raise_for_status()
+        print("Server notified: audio finished")
+    except requests.RequestException as e:
+        print("Failed to notify server: ", e)
 
 def check_for_new_files():
     global ignored_files
@@ -110,6 +124,8 @@ def update_audio():
         delete_file(current_audio)
         current_audio = None
         current_duration_ms = 0
+
+        update_audio_buffer_available_flag()
 
     while audio_queue:
         filepath = audio_queue.popleft()
