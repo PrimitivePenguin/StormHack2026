@@ -1,6 +1,6 @@
 from utilities.counter import Counter
 from utilities.send_audio_to_game import upload_audio
-from utilities.text_filer import expand_abbreviations
+from utilities.text_filter import expand_abbreviations
 from gemini.run_model import get_response
 from IPA_related.IPA_to_speech import IPA_to_speech
 from IPA_related.to_phonemes import text_to_phonemes
@@ -8,8 +8,10 @@ from IPA_related.to_phonemes import text_to_phonemes
 import sys
 import time
 import json
+import re
 import math
 import array
+import difflib
 import threading
 import requests
 import sounddevice as sd
@@ -21,6 +23,40 @@ from brainrot.run_model import brainrotify
 load_dotenv()
 
 AUDIO_STATUS_URL = "http://127.0.0.1:5000/audio-buffer-status"
+CAPTION_URL = "http://127.0.0.1:5001/caption"  # the GUI's chat-bubble listener
+
+# ---------------------------------------------------------------- wake word
+WAKE_WORD = "siri"
+# Vosk often mishears the name; any of these on their own count as the wake word
+WAKE_EXACT = {"siri", "sirie", "sirri", "siry", "seri", "serie", "sirree", "sirii", "ciri", "cyri"}
+# Real words that sound like it: only count right after a greeting ("hey sir")
+WAKE_AFTER_GREETING = {
+    "sir", "sire", "sirius", "serious", "seriously", "series", "cereal", "sierra",
+    "sari", "sorry", "surrey", "sirs",
+}
+GREETINGS = {"hey", "hi", "hay", "hello", "hate", "hee", "he", "a", "ok", "okay", "yo", "hey,", "eh"}
+
+
+def is_wake_phrase(text):
+    """
+    Lax wake-word check. Accepts "hey siri" and the ways it is usually misheard
+    ("hey sirie", "a siri", "hey sir", "heysiri", just "siri"...).
+    """
+    words = re.findall(r"[a-z']+", text.lower())
+    for i, word in enumerate(words):
+        previous = words[i - 1] if i > 0 else ""
+        greeted = previous in GREETINGS
+
+        if word in WAKE_EXACT or WAKE_WORD in word:
+            return True
+        if len(word) >= 4 and difflib.SequenceMatcher(None, word, WAKE_WORD).ratio() >= 0.75:
+            return True
+        if greeted and (
+            word in WAKE_AFTER_GREETING
+            or difflib.SequenceMatcher(None, word, WAKE_WORD).ratio() >= 0.6
+        ):
+            return True
+    return False
 
 
 class Draco:
@@ -42,8 +78,10 @@ class Draco:
         hangover_blocks=10,  # keep passing audio this many blocks after the last loud one (~1 s)
         show_levels=False,  # True prints the live mic level so you can tune mic_threshold
         finalize_after=2.0,  # seconds of unchanged partial before the text is finalized and sent
+        wake_finalize_after=0.6,  # same, but while waiting for the wake word (asleep)
     ):
         self.finalize_after = finalize_after
+        self.wake_finalize_after = wake_finalize_after
         self.min_loud_blocks = min_loud_blocks
         self._loud_run = 0
         self._pending = b""
@@ -248,10 +286,18 @@ class Draco:
         self._show_partial(partial)
         now = time.monotonic()
 
+        # Asleep: react the moment the wake word shows up in the live text,
+        # without waiting for the sentence to end.
+        if not self.wakeup and is_wake_phrase(partial):
+            final = json.loads(self.recognizer.FinalResult()).get("text", "").strip()
+            return self._finish(final if is_wake_phrase(final) else partial)
+
+        delay = self.finalize_after if self.wakeup else self.wake_finalize_after
+
         if partial != self._partial_text:
             self._partial_text = partial
             self._partial_changed_at = now
-        elif now - self._partial_changed_at >= self.finalize_after:
+        elif now - self._partial_changed_at >= delay:
             # Text has stopped changing: finalize now instead of waiting for
             # Vosk's silence detection, and hand it straight to the next step.
             return self._finish(
@@ -318,7 +364,7 @@ class Draco:
                     if not command:
                         continue
 
-                    if not self.wakeup and "hey siri" in command:
+                    if not self.wakeup and is_wake_phrase(command):
                         self.wakeup = True
                         self.counter.reset()
                         print("WOKEN UP".center(40, "-"))
@@ -328,6 +374,8 @@ class Draco:
                         )["phonemes"]
 
                         speech = IPA_to_speech(phonemes, "bf_alice(1)+bf_emma(2)")
+                        self.send_caption("user", command)
+                        self.send_caption("ai", "Hi how can I help you?")
                         upload_audio(speech)
                         self._flush_input(stream)
                         continue
@@ -349,20 +397,31 @@ class Draco:
         finally:
             self._stop.set()
 
+    def send_caption(self, role, text):
+        """Tell the GUI to show a chat bubble ("user" or "ai"). Never raises."""
+        try:
+            requests.post(CAPTION_URL, json={"role": role, "text": text}, timeout=0.5)
+        except requests.RequestException:
+            pass  # GUI not running: just skip the bubble
+
     def process_command(self, command):
+        # show the user's bubble right away, while the AI is still thinking
+        self.send_caption("user", command)
+
         # normal ver
         answer = get_response(command)
         # gemini answer -> brainrot
-        response = brainrotify(answer)
+        display_text = brainrotify(answer)
 
-        # expand abbreviations
-        response = expand_abbreviations(response)
+        # expand abbreviations (only for the voice, the bubble keeps the original wording)
+        response = expand_abbreviations(display_text)
 
         phonemes = json.loads(
             text_to_phonemes(response).decode("utf-8")
         )["phonemes"]
 
         speech = IPA_to_speech(phonemes, "bf_alice(1)+bf_emma(2)")
+        self.send_caption("ai", display_text)  # must arrive before the audio
         upload_audio(speech)
 
         print("Command:", command, "\n")
