@@ -1,18 +1,20 @@
 
 from utilities.counter import Counter
+from utilities.send_audio_to_game import upload_audio
 from gemini.run_model import get_response
 from IPA_related.IPA_to_speech import IPA_to_speech
 from IPA_related.to_phonemes import text_to_phonemes
 import sys
 import queue
 import time
+import requests
 import sounddevice as sd
 from vosk import Model, KaldiRecognizer
 from dotenv import load_dotenv
 load_dotenv()  # loads GEMINI_API_KEY from .env
 
 class Draco():
-    def __init__(self, model_path = None, lang = "en-us", samplerate = 16000, blocksize = 8000, channels = 1, callback=None, listening_timeout = 60 * 10):
+    def __init__(self, model_path = None, lang = "en-us", samplerate = 16000, blocksize = 8000, channels = 1, callback=None, listening_timeout = 24 * 10):
         self.samplerate = samplerate
         self.blocksize = blocksize
         self.channels = channels
@@ -34,6 +36,10 @@ class Draco():
                 print("\nListening completely offline without PyAudio! Press Ctrl+C to stop.\n")
                 
                 while True:
+                    if not check_for_audio_buffer_availability():
+                        time.sleep(0.1)
+                        continue
+
                     data = self.audio_queue.get()
                     if not self.recognizer.AcceptWaveform(data):
                         # print(self.recognizer.PartialResult())
@@ -53,8 +59,8 @@ class Draco():
                         response = get_response(command)
                         phonemes = text_to_phonemes(response).decode("utf-8")
                         speech = IPA_to_speech(phonemes, "bf_alice(1)+bf_emma(2)")
-
-
+                        
+                        upload_audio(speech)
 
                         print("Command: ", command, "\n")
                         print("Response: ", response, "\n")
@@ -62,6 +68,7 @@ class Draco():
 
                     if self.counter.count():
                         self.wakeup = False
+                        print("Sleeping now".center(40, "-"))
 
         except KeyboardInterrupt:
             print("\nStopping...")
@@ -73,6 +80,17 @@ class Draco():
         if status:
             print(status, file=sys.stderr)
         self.audio_queue.put(bytes(indata))
+
+def check_for_audio_buffer_availability(url = "http://127.0.0.1:5000/audio-buffer-status"):
+    response = requests.get(
+        url = url
+    )
+
+    response.raise_for_status()
+
+    if response.json()["status"]:
+        return True
+    return False
 
 if __name__ == "__main__":
     a = Draco()
