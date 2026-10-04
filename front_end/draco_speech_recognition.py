@@ -1,6 +1,6 @@
 from utilities.counter import Counter
 from utilities.send_audio_to_game import upload_audio
-from utilities.text_filer import expand_abbreviations
+from utilities.text_filter import expand_abbreviations
 from gemini.run_model import get_response
 from IPA_related.IPA_to_speech import IPA_to_speech
 from IPA_related.to_phonemes import text_to_phonemes
