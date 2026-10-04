@@ -1,19 +1,35 @@
+import io
+import threading
+import time
+from collections import deque
+
 import pygame
 import requests
-import os
-from collections import deque
 
 pygame.init()
 pygame.mixer.init()
 
 FRAME_FOLDER = "./malfoy_GUI/resources/frames"
-AUDIO_FOLDER = "./malfoy_GUI/audio"
-AUDIO_EXTENSIONS = (".mp3", ".ogg", ".wav")
+SERVER_URL = "http://127.0.0.1:5000"
+NEXT_AUDIO_URL = f"{SERVER_URL}/next-audio"
+FINISHED_URL = f"{SERVER_URL}/audio-finished-playing"
+
 FADE_DURATION_MS = 500      # how long the transition back to frame 0 takes
 ANIMATION_EARLY_MS = 700    # animation stops this long before the audio ends
+MAX_LOCAL_QUEUE = 2         # only pull from the server when we're running low
+POLL_INTERVAL_S = 0.1
 
-CHECK_FOLDER_EVENT = pygame.USEREVENT + 1
+CONTENT_TYPE_TO_EXT = {
+    "audio/mpeg": "mp3",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/ogg": "ogg",
+    "audio/flac": "flac",
+    "audio/mp4": "m4a",
+    "audio/x-m4a": "m4a",
+}
 
+import os
 screen = pygame.display.set_mode((1280, 720))
 clock = pygame.time.Clock()
 running = True
@@ -23,150 +39,113 @@ frames = [
     for filename in sorted(os.listdir(FRAME_FOLDER))
 ]
 frame_len = len(frames)
-frame_counter = 0      # next frame to show while animating
-last_drawn = 0         # index of the frame shown most recently
+frame_counter = 0
+last_drawn = 0
 
 # Transition state
 was_animating = False
 fading = False
-fade_from = None       # frame index we're fading away from
+fade_from = None
 fade_start = 0
 
-# Files already in the folder at startup are ignored
-ignored_files = set(os.listdir(AUDIO_FOLDER))
-pending_sizes = {}        # filename -> last seen size (to make sure copying has finished)
-audio_queue = deque()     # filepaths waiting to be played
-current_audio = None      # filepath currently playing
-current_duration_ms = 0   # length of the current track in milliseconds
+# Audio state (everything lives in memory)
+audio_queue = deque()        # (bytes, extension) fetched from the server
+current_stream = None        # BytesIO currently playing (keep a reference alive!)
+current_duration_ms = 0
 
-pygame.time.set_timer(CHECK_FOLDER_EVENT, 1000)
 
-def update_audio_buffer_available_flag(url = "http://127.0.0.1:5000/audio-finished-playing"):
+# ---------------------------------------------------------------- networking
+def notify_audio_finished():
     try:
-        response = requests.post(
-            url = url,
-            json={
-                "message": "Audio finished reading"
-            },
-            timeout=2
-        )
-        response.raise_for_status()
+        requests.post(FINISHED_URL, json={"message": "Audio finished reading"}, timeout=2)
         print("Server notified: audio finished")
     except requests.RequestException as e:
-        print("Failed to notify server: ", e)
+        print("Failed to notify server:", e)
 
-def check_for_new_files():
-    global ignored_files
 
+def fetch_loop():
+    """Background thread: gradually pulls audio bytes from the server."""
+    while running:
+        if len(audio_queue) >= MAX_LOCAL_QUEUE:
+            time.sleep(POLL_INTERVAL_S)
+            continue
+
+        try:
+            response = requests.get(NEXT_AUDIO_URL, timeout=2)
+            if response.status_code == 200:
+                mimetype = response.headers.get("Content-Type", "audio/wav").split(";")[0].strip()
+                ext = CONTENT_TYPE_TO_EXT.get(mimetype, "wav")
+                audio_queue.append((response.content, ext))
+                print(f"Received {len(response.content)} bytes ({ext})")
+            else:  # 204: nothing waiting
+                time.sleep(POLL_INTERVAL_S)
+        except requests.RequestException:
+            time.sleep(1)  # server unreachable, retry later
+
+
+threading.Thread(target=fetch_loop, daemon=True).start()
+
+
+# --------------------------------------------------------------------- audio
+def get_duration_ms(data):
+    """Length of an audio clip in ms (0 if it can't be determined)."""
     try:
-        current_files = set(os.listdir(AUDIO_FOLDER))
-
-        # Forget names that no longer exist so a file with the same name can be re-added later
-        ignored_files &= current_files
-        for name in list(pending_sizes):
-            if name not in current_files:
-                del pending_sizes[name]
-
-        queued_names = {os.path.basename(p) for p in audio_queue}
-        if current_audio:
-            queued_names.add(os.path.basename(current_audio))
-
-        for filename in current_files - ignored_files - queued_names:
-            filepath = os.path.join(AUDIO_FOLDER, filename)
-
-            if not os.path.isfile(filepath):
-                continue
-
-            if not filename.lower().endswith(AUDIO_EXTENSIONS):
-                ignored_files.add(filename)  # not audio, leave it alone
-                continue
-
-            # Only queue once the size has stopped changing (file finished being written)
-            size = os.path.getsize(filepath)
-            if size > 0 and pending_sizes.get(filename) == size:
-                print("New file detected:", filename)
-                audio_queue.append(filepath)
-                del pending_sizes[filename]
-            else:
-                pending_sizes[filename] = size
-    except Exception as e:
-        print("Error scanning the folder:", e)
-
-
-def delete_file(filepath):
-    try:
-        os.remove(filepath)
-        print("Deleted:", filepath)
-    except OSError as e:
-        print(f"Can't delete {filepath}:", e)
-
-
-def get_duration_ms(filepath):
-    """Length of an audio file in ms (0 if it can't be determined)."""
-    try:
-        sound = pygame.mixer.Sound(filepath)
-        length = sound.get_length()
-        del sound
-        return int(length * 1000)
+        return int(pygame.mixer.Sound(io.BytesIO(data)).get_length() * 1000)
     except pygame.error:
         return 0
 
 
 def update_audio():
-    """Called every frame: deletes finished audio, then starts the next in the queue."""
-    global current_audio, current_duration_ms
+    """Called every frame: cleans up finished audio, then starts the next in the queue."""
+    global current_stream, current_duration_ms
 
     if pygame.mixer.music.get_busy():
         return  # still playing, never interrupt
 
-    if current_audio:
-        pygame.mixer.music.unload()  # release the file so it can be deleted
-        delete_file(current_audio)
-        current_audio = None
+    if current_stream is not None:
+        pygame.mixer.music.unload()
+        current_stream = None
         current_duration_ms = 0
-
-        update_audio_buffer_available_flag()
+        threading.Thread(target=notify_audio_finished, daemon=True).start()
 
     while audio_queue:
-        filepath = audio_queue.popleft()
+        data, ext = audio_queue.popleft()
         try:
-            print("Playing:", filepath)
-            current_duration_ms = get_duration_ms(filepath)
-            pygame.mixer.music.load(filepath)
+            stream = io.BytesIO(data)
+            current_duration_ms = get_duration_ms(data)
+            pygame.mixer.music.load(stream, ext)
             pygame.mixer.music.play()
-            current_audio = filepath
+            current_stream = stream
+            print("Playing clip from memory")
             break
         except pygame.error as e:
-            print(f"Can't play {filepath}:", e)
+            print("Can't play audio:", e)
             pygame.mixer.music.unload()
-            delete_file(filepath)  # remove unplayable file so it isn't retried
+            # still tell the server so its pending counter doesn't get stuck
+            threading.Thread(target=notify_audio_finished, daemon=True).start()
 
 
 def should_animate():
     """True while the animation should run: audio is active and not in its final stretch."""
-    if current_audio is None:
+    if current_stream is None:
         return False
 
-    # If another track is waiting, keep animating straight through the handoff
     if audio_queue:
         return True
 
     if current_duration_ms <= 0:
-        return True  # length unknown, fall back to animating until the audio ends
+        return True
 
-    # For very short clips, don't let the early cutoff eat the whole animation
     early_ms = min(ANIMATION_EARLY_MS, current_duration_ms * 0.3)
     elapsed_ms = max(0, pygame.mixer.music.get_pos())
     return elapsed_ms < current_duration_ms - early_ms
 
 
+# ----------------------------------------------------------------- main loop
 while running:
     for e in pygame.event.get():
         if e.type == pygame.QUIT:
             running = False
-
-        elif e.type == CHECK_FOLDER_EVENT:
-            check_for_new_files()
 
     update_audio()
 
@@ -175,14 +154,13 @@ while running:
     screen.fill("black")
 
     if animating:
-        fading = False  # new animation cancels any transition in progress
+        fading = False
         screen.blit(frames[frame_counter], (0, 0))
         last_drawn = frame_counter
         frame_counter = (frame_counter + 1) % frame_len
         was_animating = True
     else:
         if was_animating:
-            # Animation just ended: start fading from the last frame back to frame 0
             was_animating = False
             fade_from = last_drawn
             fade_start = pygame.time.get_ticks()
@@ -200,7 +178,7 @@ while running:
                 old_frame = frames[fade_from]
                 old_frame.set_alpha(int(255 * (1 - progress)))
                 screen.blit(old_frame, (0, 0))
-                old_frame.set_alpha(255)  # restore for normal use
+                old_frame.set_alpha(255)
 
     pygame.display.flip()
     clock.tick(24)
