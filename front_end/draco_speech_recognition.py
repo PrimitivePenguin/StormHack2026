@@ -164,10 +164,9 @@ class Draco:
                         self.wakeup = True
                         print("WOKEN UP".center(40, "-"))
 
-                        phonemes = json.loads(
-                            text_to_phonemes("Hi how can I help you?").decode("utf-8")
-                        )["phonemes"]
-
+                    if self.wakeup:
+                        response = get_response(command)
+                        phonemes = eval(text_to_phonemes(response).decode("utf-8"))["phonemes"]
                         speech = IPA_to_speech(phonemes, "bf_alice(1)+bf_emma(2)")
                         upload_audio(speech)
                         continue
