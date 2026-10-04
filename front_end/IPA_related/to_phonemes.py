@@ -1,6 +1,6 @@
 import requests
 
-def to_phonemes(text, language = "a", url = "http://127.0.0.1:8880/dev/phonemize", filepath="./output.txt")
+def text_to_phonemes(text, language = "a", url = "http://127.0.0.1:8880/dev/phonemize", filepath=None):
     headers = {
         "accept": "*/*",
         "Content-Type": "application/json",
@@ -14,7 +14,8 @@ def to_phonemes(text, language = "a", url = "http://127.0.0.1:8880/dev/phonemize
     response = requests.post(url, headers=headers, json=payload)
     response.raise_for_status()  # raise an error if the request failed
 
-    with open(filepath, "wb") as f:
-        f.write(response.content)
+    if filepath:
+        with open(filepath, "wb") as f:
+            f.write(response.content)
 
-    print(f"Saved to {filepath}")
+    return response.content
