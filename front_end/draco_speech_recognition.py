@@ -24,7 +24,7 @@ RESET = object()  # marker pushed into the audio queue when muting starts
 class Draco:
     def __init__(
         self,
-        model_name = "vosk-model-en-us-0.22-lgraph",
+        model_name = "vosk-model-en-us-0.22", #-lgraph
         model_path = None,  # folder containing the model
         lang="en-us",
         samplerate=16000,

@@ -11,3 +11,6 @@ __pycache__/
 
 # vosk models (large downloads)
 vosk-model*/
+
+# gguf file (too large)
+*.gguf
