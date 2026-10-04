@@ -14,6 +14,8 @@ import sounddevice as sd
 
 from vosk import Model, KaldiRecognizer
 from dotenv import load_dotenv
+from gemini.run_model import get_response
+from brainrot.run_model import brainrotify
 
 load_dotenv()
 
@@ -24,7 +26,7 @@ RESET = object()  # marker pushed into the audio queue when muting starts
 class Draco:
     def __init__(
         self,
-        model_name = "vosk-model-en-us-0.22", #-lgraph
+        model_name = "vosk-model-en-us-0.22-lgraph", #-lgraph
         model_path = None,  # folder containing the model
         lang="en-us",
         samplerate=16000,
@@ -165,12 +167,6 @@ class Draco:
                         self.counter.count()
                         print("WOKEN UP".center(40, "-"))
 
-                    if self.wakeup:
-                        response = get_response(command)
-                        phonemes = eval(text_to_phonemes(response).decode("utf-8"))["phonemes"]
-                        speech = IPA_to_speech(phonemes, "bf_alice(1)+bf_emma(2)")
-                        upload_audio(speech)
-                        continue
 
                     if self.wakeup:
                         self.process_command(command)
@@ -254,7 +250,10 @@ class Draco:
         return command
 
     def process_command(self, command):
-        response = get_response(command)
+        # normal ver
+        answer = get_response(command)
+        # gemini answer -> brainrot
+        response = brainrotify(answer)
 
         phonemes = json.loads(
             text_to_phonemes(response).decode("utf-8")
@@ -264,6 +263,7 @@ class Draco:
         upload_audio(speech)
 
         print("Command:", command, "\n")
+        print("Answer:", answer, "\n")
         print("Response:", response, "\n")
 
 

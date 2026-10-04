@@ -1,4 +1,5 @@
 import requests
+# do this later i guess
 
 SYSTEM = "Rewrite the user's text in Gen-Z brainrot slang. Keep the meaning."
 
