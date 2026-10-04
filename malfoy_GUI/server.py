@@ -8,6 +8,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 MAX_AUDIO_SIZE = 20 * 1024 * 1024  # 20 MB
 
+audio_buffer_available = True
 
 def detect_audio_format(data):
     """Return the detected audio format, or None if invalid."""
@@ -125,6 +126,9 @@ def upload_audio():
     with open(file_path, "wb") as f:
         f.write(audio_data)
 
+    global audio_buffer_available
+    audio_buffer_available = False
+
     # --------------------------------------------------
     # 6. Return result
     # --------------------------------------------------
@@ -137,6 +141,20 @@ def upload_audio():
         "saved_to": file_path
     }), 200
 
+@app.route("/audio-finished-playing", methods=["POST"])
+def audio_finished_playing():
+    global audio_buffer_available
+    audio_buffer_available = True
+
+    return jsonify({
+        "message": "Game finished reading the audio"
+    }), 200
+
+@app.route("/audio-buffer-status", methods=["GET"])
+def audio_buffer_status():
+    return jsonify({
+        "status": int(audio_buffer_available)
+    })
 
 if __name__ == '__main__':
     app.run(
