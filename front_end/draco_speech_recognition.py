@@ -1,5 +1,6 @@
 
 from utilities.counter import Counter
+from utilities.send_audio_to_game import upload_audio
 from gemini.run_model import get_response
 from IPA_related.IPA_to_speech import IPA_to_speech
 from IPA_related.to_phonemes import text_to_phonemes
@@ -54,7 +55,7 @@ class Draco():
                         phonemes = text_to_phonemes(response).decode("utf-8")
                         speech = IPA_to_speech(phonemes, "bf_alice(1)+bf_emma(2)")
 
-
+                        upload_audio(speech)
 
                         print("Command: ", command, "\n")
                         print("Response: ", response, "\n")
