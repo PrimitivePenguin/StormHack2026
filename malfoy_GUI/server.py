@@ -1,50 +1,146 @@
 import os
 from flask import Flask, request, jsonify
-from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
-# Configure the folder where audio files will be stored
-UPLOAD_FOLDER = "./malfoy-GUI/resources/audio/"
-ALLOWED_EXTENSIONS = {'mp3', 'wav', 'ogg', 'm4a', 'flac'}
-
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-# Ensure the upload folder exists
+UPLOAD_FOLDER = "./malfoy_GUI/audio/"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-def allowed_file(filename):
-    """Check if the file extension is a supported audio format."""
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+MAX_AUDIO_SIZE = 20 * 1024 * 1024  # 20 MB
+
+
+def detect_audio_format(data):
+    """Return the detected audio format, or None if invalid."""
+
+    # MP3
+    if data.startswith(b"ID3"):
+        return "mp3"
+
+    # MP3 without ID3 metadata
+    if len(data) >= 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0:
+        return "mp3"
+
+    # WAV / RIFF
+    if data.startswith(b"RIFF") and data[8:12] == b"WAVE":
+        return "wav"
+
+    # OGG
+    if data.startswith(b"OggS"):
+        return "ogg"
+
+    # FLAC
+    if data.startswith(b"fLaC"):
+        return "flac"
+
+    # M4A / MP4
+    if len(data) >= 12 and data[4:8] == b"ftyp":
+        return "m4a"
+
+    return None
+
 
 @app.route('/upload-audio', methods=['POST'])
 def upload_audio():
-    # Check if the post request has the file part
-    if 'audio' not in request.files:
-        return jsonify({"error": "No audio file part in the request"}), 400
-    
-    file = request.files['audio']
-    
-    # If the user does not select a file, the browser submits an empty file without a filename
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
-    
-    if file and allowed_file(file.filename):
-        # secure_filename prevents directory traversal vulnerabilities (e.g., ../../etc/passwd)
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        
-        # Save the file to the local folder
-        file.save(file_path)
-        
+
+    # --------------------------------------------------
+    # 1. Get raw bytes
+    # --------------------------------------------------
+
+    audio_data = request.get_data()
+
+    if not audio_data:
         return jsonify({
-            "message": "Audio file uploaded successfully!",
-            "filename": filename,
-            "saved_to": file_path
-        }), 200
-        
-    return jsonify({"error": "Invalid file type. Supported formats: MP3, WAV, OGG, M4A, FLAC"}), 400
+            "error": "No audio data received"
+        }), 400
+
+    # --------------------------------------------------
+    # 2. Check file size
+    # --------------------------------------------------
+
+    if len(audio_data) > MAX_AUDIO_SIZE:
+        return jsonify({
+            "error": "Audio file is too large",
+            "max_size": MAX_AUDIO_SIZE
+        }), 413
+
+    # --------------------------------------------------
+    # 3. Check Content-Type
+    # --------------------------------------------------
+
+    allowed_content_types = {
+        "audio/mpeg": "mp3",
+        "audio/wav": "wav",
+        "audio/x-wav": "wav",
+        "audio/ogg": "ogg",
+        "audio/mp4": "m4a",
+        "audio/x-m4a": "m4a",
+        "audio/flac": "flac",
+    }
+
+    content_type = request.content_type
+
+    if content_type not in allowed_content_types:
+        return jsonify({
+            "error": "Unsupported Content-Type",
+            "received": content_type
+        }), 400
+
+    # --------------------------------------------------
+    # 4. Validate actual bytes
+    # --------------------------------------------------
+
+    detected_format = detect_audio_format(audio_data)
+
+    if detected_format is None:
+        return jsonify({
+            "error": "Invalid or corrupted audio data"
+        }), 400
+
+    expected_format = allowed_content_types[content_type]
+
+    if detected_format != expected_format:
+        return jsonify({
+            "error": "Content-Type does not match audio data",
+            "content_type": content_type,
+            "detected_format": detected_format
+        }), 400
+
+    # --------------------------------------------------
+    # 5. Save file
+    # --------------------------------------------------
+
+    filename = request.headers.get("X-Filename")
+
+    if not filename:
+        filename = f"audio.{detected_format}"
+
+    # Prevent directory traversal
+    filename = os.path.basename(filename)
+
+    file_path = os.path.join(
+        UPLOAD_FOLDER,
+        filename
+    )
+
+    with open(file_path, "wb") as f:
+        f.write(audio_data)
+
+    # --------------------------------------------------
+    # 6. Return result
+    # --------------------------------------------------
+
+    return jsonify({
+        "message": "Audio file uploaded successfully!",
+        "filename": filename,
+        "format": detected_format,
+        "size": len(audio_data),
+        "saved_to": file_path
+    }), 200
+
 
 if __name__ == '__main__':
-    # Start the local development server on port 5000
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(
+        host='0.0.0.0',
+        port=5000,
+        debug=True
+    )

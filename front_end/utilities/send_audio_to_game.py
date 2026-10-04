@@ -1,20 +1,15 @@
 import requests
 
-# The URL matching the Flask server configuration
-url = "http://localhost:5000/upload-audio"
 
-# Path to the local audio file you want to send
-file_path = "output.wav"
+def upload_audio(data, content_type = "audio/wav", url="http://localhost:5000/upload-audio"):
+    response = requests.post(
+        url,
+        data=data,
+        headers={
+            "Content-Type": content_type
+        }
+    )
 
-try:
-    with open(file_path, "rb") as audio_file:
-        # The key name 'audio' must match what request.files['audio'] looks for
-        files = {"audio": (file_path, audio_file, "audio/wav")}
-        
-        response = requests.post(url, files=files)
-        
-    print(f"Status Code: {response.status_code}")
-    print("Response Data:", response.json())
+    response.raise_for_status()
 
-except Exception as e:
-    print(f"An error occurred: {e}")
+    return response.json()
