@@ -26,14 +26,24 @@ AUDIO_STATUS_URL = "http://127.0.0.1:5000/audio-buffer-status"
 CAPTION_URL = "http://127.0.0.1:5001/caption"  # the GUI's chat-bubble listener
 
 # ---------------------------------------------------------------- wake word
-WAKE_WORD = "siri"
+WAKE_WORD = "draco"
+
 # Vosk often mishears the name; any of these on their own count as the wake word
-WAKE_EXACT = {"siri", "sirie", "sirri", "siry", "seri", "serie", "sirree", "sirii", "ciri", "cyri"}
-# Real words that sound like it: only count right after a greeting ("hey sir")
-WAKE_AFTER_GREETING = {
-    "sir", "sire", "sirius", "serious", "seriously", "series", "cereal", "sierra",
-    "sari", "sorry", "surrey", "sirs",
+WAKE_EXACT = {
+    "draco",
+    "drako",
+    "drayco",
+    "drayko",
+    "drago",
+    "dracus",
+    "dracos",
 }
+
+# Real words that can sound somewhat like it: only count right after a greeting ("hey drake")
+WAKE_AFTER_GREETING = {
+    "drake", "draco", "drago", "dragon", "draconian",
+}
+
 GREETINGS = {"hey", "hi", "hay", "hello", "hate", "hee", "he", "a", "ok", "okay", "yo", "hey,", "eh"}
 
 
