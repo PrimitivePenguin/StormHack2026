@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()  # loads GEMINI_API_KEY from .env
 
 class Draco():
-    def __init__(self, model_path = None, lang = "en-us", samplerate = 16000, blocksize = 8000, channels = 1, callback=None, listening_timeout = 24 * 10):
+    def __init__(self, model_path = None, lang = "en-us", samplerate = 16000, blocksize = 8000, channels = 1, callback=None, listening_timeout = 6 * 10):
         self.samplerate = samplerate
         self.blocksize = blocksize
         self.channels = channels
@@ -57,7 +57,7 @@ class Draco():
 
                     if self.wakeup:
                         response = get_response(command)
-                        phonemes = text_to_phonemes(response).decode("utf-8")
+                        phonemes = eval(text_to_phonemes(response).decode("utf-8"))["phonemes"]
                         speech = IPA_to_speech(phonemes, "bf_alice(1)+bf_emma(2)")
                         
                         upload_audio(speech)
