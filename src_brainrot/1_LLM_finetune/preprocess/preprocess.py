@@ -19,31 +19,34 @@ def load_raw() -> pd.DataFrame:
 # 2. Clean
 def clean(df: pd.DataFrame) -> pd.DataFrame:
     # Trip spaces, remove empty rows drop duplicates
-    df = df[["source", "target"].copy()] #keep only source  target
+    df = df[["source", "target"]].copy() #keep only source  target
     
     # convert to string  + strip() removes whitespace from beg + end
     df["source"] = df["source"].fillna("").astype(str).str.strip()
     df["target"] = df["target"].fillna("").astype(str).str.strip()
 
     # Remove row when either column is empty
-    df = df[(df["source" != ""]) & (df["target"] != "")]
+    df = df[(df["source"] != "") & (df["target"] != "")]
 
     # Remove dupcliates
     df = df.drop_duplicates(subset=["source", "target"]).reset_index(drop = True)
-
+    return df
 
 # 3. Add pattern recognition
 def add_key(df: pd.DataFrame) -> pd.DataFrame:
     # strip punctuation, lowercase, and add a key col for pattern
     df = df.copy()
-    df["key"] = df["source"].str.lower().str.replace(r"[^\w\s]", "", regex=True)
-
+    df["key"] = (df["source"].str.lower()
+                .str.replace(r"[^\w\s]", "", regex=True)
+                .str.replace(r"\s+", " ", regex=True)
+                .str.strip())
     return df
 
 # 4. Cap repeats
 def cap_repeats(df: pd.DataFrame) -> pd.DataFrame:
     shuffled = df.sample(frac=1, random_state=SEED)
-    return shuffled.groupby("key", sort=False).head(MAX_PER_INPUT).reset_index(drop=Truee)
+    return shuffled.groupby("key", sort=False).head(MAX_PER_INPUT).reset_index(drop=True)
+
 # 5. Cap patterns
 def cap_patterns(df: pd.DataFrame) -> pd.DataFrame:
     for pattern in CAP_PATTERNS:
@@ -74,6 +77,7 @@ def save(parts: dict) -> None:
         part[["source", "target"]].to_json(
             DATA_DIR / f"{name}.jsonl", orient="records", lines=True, force_ascii=False,
         )
+    
 # 8. Report
 def report(raw: pd.DataFrame, parts: dict) -> None:
     print(f"raw rows: {len(raw)}")
