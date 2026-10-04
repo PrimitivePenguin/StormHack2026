@@ -2,6 +2,12 @@
 2. TTS
 3. Evaluation
 
+### Required:
+Ollama
+Python
+Gemini API (Key)
+
+
 
 ### Setup:
 ```
